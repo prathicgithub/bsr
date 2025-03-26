@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Secure YouTube Player</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        touch-action: manipulation;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        overflow-x: hidden;
+      }
+      .player-container {
+        width: 100%;
+        max-width: 800px;
+        position: relative;
+        margin: 10px;
+      }
+      .video-selector {
+        margin-bottom: 10px;
+        width: 100%;
+      }
+      .video-selector select {
+        width: 100%;
+        padding: 10px;
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 8px 8px 0 0;
+        font-size: 16px;
+        cursor: pointer;
+        outline: none;
+      }
+      .video-selector select:focus {
+        background: #444;
+      }
+      .video-wrapper {
+        position: relative;
+        padding-bottom: 56.25%; /* 16:9 aspect ratio */
+        height: 0;
+        overflow: hidden;
+        background: #000;
+      }
+      #player {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      .controls {
+        background: rgba(0, 0, 0, 0.9);
+        padding: 12px 15px;
+        display: flex;
+        align-items: center;
+        border-radius: 0 0 8px 8px;
+      }
+      .control-btn {
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 20px;
+        width: 40px;
+        height: 40px;
+        cursor: pointer;
+        margin: 0 5px;
+        touch-action: manipulation;
+      }
+      .progress-container {
+        flex-grow: 1;
+        height: 8px; /* Slightly larger for mobile */
+        background: #333;
+        margin: 0 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        position: relative;
+      }
+      .progress-bar {
+        height: 100%;
+        background: #f00;
+        width: 0%;
+        border-radius: 4px;
+        transition: width 0.1s linear;
+      }
+      .time-display {
+        color: white;
+        font-size: 14px;
+        font-family: monospace;
+        min-width: 100px;
+        text-align: center;
+      }
+
+      /* Carousel Styles */
+      .carousel-view {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 800px;
+        padding: 0 10px;
+      }
+      .carousel-container {
+        display: flex;
+        overflow-x: auto;
+        scroll-behavior: smooth;
+        margin-bottom: 15px;
+        padding: 15px 0;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+        -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+      }
+      .carousel-container::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
+      }
+      .carousel-item {
+        flex: 0 0 180px; /* Smaller for mobile */
+        margin-right: 10px;
+        position: relative;
+        cursor: pointer;
+        border-radius: 8px;
+        overflow: hidden;
+        transition: transform 0.3s;
+      }
+      .carousel-item:active {
+        transform: scale(0.95); /* Feedback for touch */
+      }
+      .carousel-item img {
+        width: 100%;
+        height: 101px; /* 16:9 ratio for thumbnails */
+        object-fit: cover;
+        border-radius: 8px;
+      }
+      .carousel-item .title {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px;
+        font-size: 12px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .carousel-controls {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 15px;
+      }
+      .carousel-button {
+        background: #333;
+        color: white;
+        border: none;
+        border-radius: 20px;
+        padding: 8px 15px;
+        margin: 0 5px;
+        cursor: pointer;
+        font-size: 14px;
+        touch-action: manipulation;
+      }
+      .carousel-button:active {
+        background: #555;
+      }
+
+      /* Fullscreen mode */
+      .fullscreen-mode {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1000;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+      }
+      .fullscreen-mode .video-wrapper {
+        padding-bottom: 0;
+        height: calc(100% - 70px);
+      }
+      .fullscreen-mode #player {
+        position: absolute;
+        height: 100%;
+      }
+      .fullscreen-mode .controls {
+        border-radius: 0;
+      }
+      .back-button {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        cursor: pointer;
+        z-index: 1001;
+        display: none;
+        touch-action: manipulation;
+      }
+      .back-button:active {
+        background: rgba(50, 50, 50, 0.7);
+      }
+      .fullscreen-mode .back-button {
+        display: block;
+      }
+
+      /* View modes */
+      .view-carousel {
+        display: block;
+      }
+      .view-player {
+        display: none;
+      }
+      .fullscreen-mode .view-carousel {
+        display: none;
+      }
+      .fullscreen-mode .view-player {
+        display: block;
+        height: 100%;
+      }
+
+      /* Login Screen */
+      #login-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #121212;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+      }
+      .login-container {
+        background: #1e1e1e;
+        border-radius: 8px;
+        padding: 30px;
+        width: 90%;
+        max-width: 350px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      }
+      .login-header {
+        color: white;
+        text-align: center;
+        margin-bottom: 25px;
+        font-size: 24px;
+      }
+      .login-form {
+        display: flex;
+        flex-direction: column;
+      }
+      .login-input {
+        padding: 12px 15px;
+        margin-bottom: 15px;
+        border: none;
+        border-radius: 4px;
+        background: #333;
+        color: white;
+        font-size: 16px;
+      }
+      .login-button {
+        padding: 12px;
+        background: #e62117;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      .login-button:hover,
+      .login-button:active {
+        background: #cc1e12;
+      }
+      .login-error {
+        color: #ff5252;
+        text-align: center;
+        margin-top: 15px;
+        display: none;
+      }
+
+      /* Orientation message */
+      #orientation-message {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        z-index: 3000;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 20px;
+      }
+
+      /* Mobile optimizations */
+      @media (max-width: 480px) {
+        .carousel-item {
+          flex: 0 0 150px;
+        }
+        .carousel-item img {
+          height: 84px;
+        }
+        .time-display {
+          min-width: 80px;
+          font-size: 12px;
+        }
+        .control-btn {
+          width: 35px;
+          height: 35px;
+        }
+        .carousel-controls {
+          margin-bottom: 10px;
+        }
+        .back-button {
+          width: 35px;
+          height: 35px;
+          font-size: 16px;
+        }
+      }
+
+      /* Landscape orientation for small screens */
+      @media (max-height: 450px) and (orientation: landscape) {
+        #orientation-message {
+          display: flex;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Login Screen -->
+    <div id="login-screen">
+      <div class="login-container">
+        <h2 class="login-header">Secure Video Player</h2>
+        <form class="login-form" id="login-form">
+          <input
+            type="password"
+            class="login-input"
+            id="password-input"
+            placeholder="Enter password"
+            required
+          />
+          <button type="submit" class="login-button">Access Videos</button>
+          <p id="login-error" class="login-error">
+            Incorrect password. Please try again.
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Orientation Message -->
+    <div id="orientation-message">
+      <div>
+        <h3>For better viewing experience</h3>
+        <p>Please rotate your device to portrait mode.</p>
+      </div>
+    </div>
+
+    <div id="app-container" style="display: none">
+      <!-- Carousel View -->
+      <div class="carousel-view view-carousel">
+        <h2 style="color: white; text-align: center; margin-bottom: 20px">
+          Video Library
+        </h2>
+        <div class="carousel-controls">
+          <button class="carousel-button" id="scroll-left">◀ Previous</button>
+          <button class="carousel-button" id="scroll-right">Next ▶</button>
+        </div>
+        <div class="carousel-container" id="carousel-container">
+          <!-- Carousel items will be added here via JavaScript -->
+        </div>
+      </div>
+
+      <!-- Player View -->
+      <div class="player-container view-player">
+        <button class="back-button" id="back-button">←</button>
+        <div class="video-wrapper">
+          <div id="player"></div>
+        </div>
+        <div class="controls">
+          <button class="control-btn" id="play-btn">▶</button>
+          <div class="progress-container" id="progress-container">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+          <span class="time-display" id="time-display">0:00 / 0:00</span>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+      // Video library data
+      const videoLibrary = [
+        {
+          id: "CUNm6wmO3As",
+          title: "Pichwai painting Class 1",
+          thumbnail: "https://img.youtube.com/vi/CUNm6wmO3As/mqdefault.jpg",
+        },
+        {
+          id: "KpjC7nB5Q28",
+          title: "Pichwai painting Class 2",
+          thumbnail: "https://img.youtube.com/vi/KpjC7nB5Q28/mqdefault.jpg",
+        },
+        {
+          id: "zSzQ-Tnbw80",
+          title: "Pichwai painting Class 3",
+          thumbnail: "https://img.youtube.com/vi/zSzQ-Tnbw80/mqdefault.jpg",
+        },
+        {
+          id: "VIDEO_ID_4",
+          title: "Video 4",
+          thumbnail: "https://img.youtube.com/vi/VIDEO_ID_4/mqdefault.jpg",
+        },
+        {
+          id: "VIDEO_ID_5",
+          title: "Video 5",
+          thumbnail: "https://img.youtube.com/vi/VIDEO_ID_5/mqdefault.jpg",
+        },
+        {
+          id: "VIDEO_ID_6",
+          title: "Video 6",
+          thumbnail: "https://img.youtube.com/vi/VIDEO_ID_6/mqdefault.jpg",
+        },
+      ];
+
+      // Password for access - YOU CAN CHANGE THIS
+      const correctPassword = "BSR@Pichwai_"; // This is the password
+
+      // Handle login
+      document
+        .getElementById("login-form")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+          const passwordInput = document.getElementById("password-input").value;
+
+          if (passwordInput === correctPassword) {
+            // Password correct, show app
+            document.getElementById("login-screen").style.display = "none";
+            document.getElementById("app-container").style.display = "block";
+
+            // Initialize app after successful login
+            initApp();
+          } else {
+            // Show error message
+            document.getElementById("login-error").style.display = "block";
+            // Clear password field
+            document.getElementById("password-input").value = "";
+          }
+        });
+
+      // Strict security measures
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          writeText: () => Promise.reject("Clipboard access blocked"),
+          readText: () => Promise.reject("Clipboard access blocked"),
+        },
+        configurable: false,
+        writable: false,
+      });
+
+      let player;
+      let isDragging = false;
+      let playerReady = false;
+      let isFullscreen = false;
+      let touchStartX = 0;
+      let touchStartY = 0;
+
+      // Initialize app
+      function initApp() {
+        // Initialize carousel
+        initCarousel();
+
+        // Setup back button
+        document
+          .getElementById("back-button")
+          .addEventListener("click", closeVideo);
+
+        // Handle orientation change
+        window.addEventListener("orientationchange", checkOrientation);
+        window.addEventListener("resize", checkOrientation);
+
+        // Initial orientation check
+        checkOrientation();
+      }
+
+      function checkOrientation() {
+        // Only show orientation message on small landscape screens
+        if (
+          window.innerHeight < 450 &&
+          window.innerWidth > window.innerHeight
+        ) {
+          document.getElementById("orientation-message").style.display = "flex";
+        } else {
+          document.getElementById("orientation-message").style.display = "none";
+        }
+      }
+
+      // Initialize carousel
+      function initCarousel() {
+        const carouselContainer = document.getElementById("carousel-container");
+
+        // Add videos to carousel
+        videoLibrary.forEach((video) => {
+          const carouselItem = document.createElement("div");
+          carouselItem.className = "carousel-item";
+          carouselItem.dataset.videoId = video.id;
+
+          carouselItem.innerHTML = `
+                    <img src="${video.thumbnail}" alt="${video.title}" onerror="this.src='data:image/svg+xml;charset=UTF-8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'150\\' height=\\'84\\' viewBox=\\'0 0 150 84\\'><rect fill=\\'%23333\\' width=\\'150\\' height=\\'84\\'/><text fill=\\'%23fff\\' font-size=\\'14\\' font-family=\\'Arial\\' x=\\'75\\' y=\\'42\\' text-anchor=\\'middle\\'>Thumbnail</text></svg>'">
+                    <div class="title">${video.title}</div>
+                `;
+
+          carouselItem.addEventListener("click", () => {
+            openVideo(video.id);
+          });
+
+          carouselContainer.appendChild(carouselItem);
+        });
+
+        // Setup carousel navigation
+        document.getElementById("scroll-left").addEventListener("click", () => {
+          carouselContainer.scrollBy({ left: -300, behavior: "smooth" });
+        });
+
+        document
+          .getElementById("scroll-right")
+          .addEventListener("click", () => {
+            carouselContainer.scrollBy({ left: 300, behavior: "smooth" });
+          });
+
+        // Touch controls for carousel
+        carouselContainer.addEventListener(
+          "touchstart",
+          (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+          },
+          { passive: true }
+        );
+      }
+
+      function openVideo(videoId) {
+        const appContainer = document.getElementById("app-container");
+
+        // If player is not ready yet, initialize it
+        if (!player) {
+          initPlayer(videoId);
+        } else {
+          // Change video if player is already initialized
+          changeVideo(videoId);
+        }
+
+        // Switch to fullscreen mode
+        appContainer.classList.add("fullscreen-mode");
+        isFullscreen = true;
+      }
+
+      function closeVideo() {
+        const appContainer = document.getElementById("app-container");
+
+        // Exit fullscreen mode
+        appContainer.classList.remove("fullscreen-mode");
+        isFullscreen = false;
+
+        // Pause the video
+        if (playerReady) {
+          player.pauseVideo();
+        }
+      }
+
+      function initPlayer(videoId) {
+        player = new YT.Player("player", {
+          height: "100%",
+          width: "100%",
+          videoId: videoId,
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 0,
+            iv_load_policy: 3,
+            playsinline: 1,
+            enablejsapi: 1,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: onPlayerReady,
+            onStateChange: onPlayerStateChange,
+          },
+        });
+      }
+
+      function onYouTubeIframeAPIReady() {
+        // We'll initialize the player when a video is clicked
+        // But we don't do anything here because we need to wait for login
+      }
+
+      function onPlayerReady(event) {
+        console.log("Player is ready");
+        playerReady = true;
+
+        // Double-layer security for iframe
+        const iframe = document.querySelector("#player iframe");
+        if (iframe) {
+          iframe.style.pointerEvents = "none";
+          iframe.setAttribute("sandbox", "allow-same-origin allow-scripts");
+          iframe.setAttribute("allow", "autoplay");
+
+          // Block iframe navigation
+          try {
+            iframe.contentWindow.addEventListener("beforeunload", (e) => {
+              e.preventDefault();
+              return false;
+            });
+          } catch (e) {
+            console.log("Could not add beforeunload listener:", e);
+          }
+        } else {
+          console.log("iframe not found");
+        }
+
+        // Setup controls
+        setupControls();
+
+        // Start progress updates
+        setInterval(updateProgress, 200);
+
+        // Start playing
+        event.target.playVideo();
+      }
+
+      function onPlayerStateChange(event) {
+        console.log("Player state changed to:", event.data);
+        updatePlayButton();
+
+        // Prevent YouTube's end screen
+        if (event.data === YT.PlayerState.ENDED) {
+          player.seekTo(0);
+          player.pauseVideo();
+        }
+      }
+
+      function setupControls() {
+        console.log("Setting up controls");
+
+        // Play/Pause button
+        const playBtn = document.getElementById("play-btn");
+        playBtn.addEventListener("click", togglePlayPause);
+        playBtn.addEventListener("touchstart", function (e) {
+          e.preventDefault(); // Prevent double-firing on touch devices
+          togglePlayPause();
+        });
+
+        // Progress bar interaction
+        const progressContainer = document.getElementById("progress-container");
+
+        // Mouse events
+        progressContainer.addEventListener("mousedown", startSeek);
+
+        // Touch events - better for mobile
+        progressContainer.addEventListener(
+          "touchstart",
+          function (e) {
+            e.preventDefault();
+            startSeek(e.touches[0]);
+          },
+          { passive: false }
+        );
+
+        document.addEventListener("mousemove", (e) => {
+          if (isDragging) handleSeek(e);
+        });
+
+        document.addEventListener(
+          "touchmove",
+          (e) => {
+            if (isDragging && e.touches.length > 0) {
+              e.preventDefault();
+              handleSeek(e.touches[0]);
+            }
+          },
+          { passive: false }
+        );
+
+        document.addEventListener("mouseup", endSeek);
+        document.addEventListener("touchend", endSeek);
+
+        console.log("Controls setup complete");
+      }
+
+      function togglePlayPause() {
+        console.log("Play button clicked");
+        if (!playerReady) {
+          console.log("Player not ready yet");
+          return;
+        }
+
+        try {
+          const state = player.getPlayerState();
+          console.log("Current player state:", state);
+
+          if (state === YT.PlayerState.PLAYING) {
+            console.log("Pausing video");
+            player.pauseVideo();
+          } else {
+            console.log("Playing video");
+            player.playVideo();
+          }
+        } catch (e) {
+          console.error("Error toggling play state:", e);
+        }
+      }
+
+      function changeVideo(videoId) {
+        console.log("Changing video to:", videoId);
+        if (player && player.loadVideoById && playerReady) {
+          // Then load the new video
+          player.loadVideoById({
+            videoId: videoId,
+            startSeconds: 0,
+            suggestedQuality: "large",
+          });
+
+          // Update play button state
+          updatePlayButton();
+
+          // Reset progress bar
+          document.getElementById("progress-bar").style.width = "0%";
+          document.getElementById("time-display").textContent = "0:00 / 0:00";
+        } else {
+          console.log("Player not ready for changing video");
+        }
+      }
+
+      function startSeek(e) {
+        console.log("Starting seek");
+        isDragging = true;
+        handleSeek(e);
+      }
+
+      function handleSeek(e) {
+        if (!playerReady) return;
+
+        const progressContainer = document.getElementById("progress-container");
+        const rect = progressContainer.getBoundingClientRect();
+        const pos = (e.clientX - rect.left) / rect.width;
+        const percent = Math.max(0, Math.min(1, pos));
+
+        document.getElementById("progress-bar").style.width = `${
+          percent * 100
+        }%`;
+
+        try {
+          if (player && player.getDuration && player.seekTo) {
+            player.seekTo(player.getDuration() * percent);
+          }
+        } catch (e) {
+          console.error("Error during seek:", e);
+        }
+      }
+
+      function endSeek() {
+        console.log("Ending seek");
+        isDragging = false;
+      }
+
+      function updatePlayButton() {
+        if (!playerReady) return;
+
+        try {
+          const btn = document.getElementById("play-btn");
+          const state = player.getPlayerState();
+          btn.textContent = state === YT.PlayerState.PLAYING ? "⏸" : "▶";
+        } catch (e) {
+          console.error("Error updating play button:", e);
+        }
+      }
+
+      function updateProgress() {
+        if (!playerReady) return;
+
+        try {
+          if (player && player.getCurrentTime && player.getDuration) {
+            const currentTime = player.getCurrentTime();
+            const duration = player.getDuration();
+
+            if (
+              !isDragging &&
+              !isNaN(currentTime) &&
+              !isNaN(duration) &&
+              duration > 0
+            ) {
+              document.getElementById("progress-bar").style.width = `${
+                (currentTime / duration) * 100
+              }%`;
+              document.getElementById(
+                "time-display"
+              ).textContent = `${formatTime(currentTime)} / ${formatTime(
+                duration
+              )}`;
+            }
+          }
+        } catch (e) {
+          console.error("Error updating progress:", e);
+        }
+      }
+
+      function formatTime(seconds) {
+        if (isNaN(seconds)) return "0:00";
+
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+      }
+
+      // Handle escape key for exiting fullscreen
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && isFullscreen) {
+          closeVideo();
+        }
+
+        // Allow space bar for play/pause
+        if (e.key === " " && playerReady && isFullscreen) {
+          e.preventDefault();
+          togglePlayPause();
+          return false;
+        }
+      });
+
+      // Security lockdown - but allow our controls to work
+      document.addEventListener(
+        "contextmenu",
+        (e) => {
+          e.preventDefault();
+          return false;
+        },
+        true
+      );
+
+      // Block all drag/drop attempts
+      document.addEventListener("dragstart", (e) => e.preventDefault(), false);
+      document.addEventListener("drop", (e) => e.preventDefault(), false);
+
+      window.addEventListener("blur", () => {
+        if (document.activeElement?.tagName === "IFRAME") {
+          window.focus();
+        }
+      });
+
+      // Log errors for debugging
+      window.onerror = function (message, source, lineno, colno, error) {
+        console.error(
+          "Error occurred:",
+          message,
+          "at",
+          source,
+          lineno,
+          colno,
+          error
+        );
+      };
+
+      // Save scroll position on page hide/unload
+      window.addEventListener("pagehide", () => {
+        sessionStorage.setItem("scrollPosition", window.scrollY);
+      });
+
+      // Restore scroll position
+      window.addEventListener("pageshow", () => {
+        if (sessionStorage.getItem("scrollPosition")) {
+          window.scrollTo(
+            0,
+            parseInt(sessionStorage.getItem("scrollPosition"))
+          );
+        }
+      });
+    </script>
+  </body>
+</html>
